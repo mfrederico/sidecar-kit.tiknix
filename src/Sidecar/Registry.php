@@ -20,7 +20,15 @@ class Registry {
 
     /** All registered plugins: name => [url, sso_secret, feature, label, icon]. */
     public static function all(): array {
-        $ini = @parse_ini_file(dirname(__DIR__, 2) . '/conf/config.ini', true) ?: [];
+        // Find CORE's config.ini. Once this kit is vendored, dirname(__DIR__,2) points
+        // INSIDE the package, not at core — so prefer the absolute path core publishes
+        // (core.config_file), then a sidecar's core_root, then the legacy fallback.
+        $path = (string) (\Flight::get('core.config_file') ?: '');
+        if ($path === '' || !is_file($path)) {
+            $root = (string) (\Flight::get('sidecar.core_root') ?: dirname(__DIR__, 2));
+            $path = rtrim($root, '/') . '/conf/config.ini';
+        }
+        $ini = @parse_ini_file($path, true) ?: [];
         $out = [];
         foreach ($ini as $section => $vals) {
             if (strncmp($section, 'sidecar.', 8) !== 0 || !is_array($vals)) continue;
