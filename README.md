@@ -2,7 +2,7 @@
 
 The shared **front-controller boot + SSO-consume + plugin registry** that every tiknix
 sidecar runs on: `pipelines.tiknix`, `store.tiknix` (shop), `explorer.tiknix`, and the
-planned `aibuilder.tiknix` / `workspace.tiknix`.
+planned `workbench.tiknix` (task board + AI Builder).
 
 A sidecar is a standalone app SSO'd into the tiknix shell iframe. This kit is the piece
 they all share so a new sidecar is *its own controllers + views* and nothing else.

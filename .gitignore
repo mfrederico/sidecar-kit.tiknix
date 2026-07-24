@@ -5,5 +5,5 @@ conf/*.ini
 *.db
 .DS_Store
 
-# AI Projects (workspace) sidecar: per-instance task data, never tracked
+# AI Projects (workbench) sidecar: per-instance task data, never tracked
 data/workbench.db
