@@ -1,0 +1,7 @@
+{
+  "name": "tiknix/sidecar-kit",
+  "description": "Tiknix Sidecar Kit — the shared front-controller boot + SSO-consume + plugin registry that every sidecar (pipelines, store, explorer, ai-builder, workspace) runs on.",
+  "type": "library",
+  "license": "proprietary",
+  "autoload": { "psr-4": { "app\\Sidecar\\": "src/Sidecar/" } }
+}
