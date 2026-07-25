@@ -55,6 +55,7 @@ class Kernel {
         Flight::set('sidecar.root', $this->root);
         Flight::set('sidecar.core_root', $this->coreRoot);
         $this->installLogger();
+        $this->installFirehose();
         $this->registerRoutes();
     }
 
@@ -157,9 +158,29 @@ class Kernel {
         }
     }
 
-    /** No-op logger stub — core shared code calls Flight::get('log')->debug/error/…. */
+    /**
+     * Real file logger — Monolog RotatingFileHandler into the sidecar's OWN logs/app.log
+     * (same format as core's), so a sidecar's errors are captured on disk like tiknix's.
+     * [logging] file/level override the defaults. Falls back to an error_log stub if
+     * Monolog isn't on the classpath.
+     */
     private function installLogger(): void {
-        $name = self::name();
+        $name  = self::name();
+        $rel   = (string) ($this->config['logging']['file'] ?? 'logs/app.log');
+        $file  = ($rel[0] ?? '') === '/' ? $rel : $this->root . '/' . $rel;
+        $level = strtoupper((string) ($this->config['logging']['level'] ?? 'DEBUG'));
+        if (class_exists('\Monolog\Logger') && class_exists('\Monolog\Handler\RotatingFileHandler')) {
+            try {
+                @mkdir(dirname($file), 0775, true);
+                $log     = new \Monolog\Logger($name);
+                $handler = new \Monolog\Handler\RotatingFileHandler($file, 30, constant('\Monolog\Logger::' . $level));
+                $handler->setFormatter(new \Monolog\Formatter\LineFormatter(
+                    "[%datetime%] %channel%.%level_name%: %message% %context% %extra%\n", 'Y-m-d H:i:s', true, true));
+                $log->pushHandler($handler);
+                Flight::set('log', $log);
+                return;
+            } catch (\Throwable $e) { /* fall through to the stub */ }
+        }
         Flight::set('log', new class($name) {
             public function __construct(private string $n) {}
             public function __call($m, $a) {
@@ -168,6 +189,27 @@ class Kernel {
                 }
             }
         });
+    }
+
+    /**
+     * Wire firehose reporting. The ingest URL + shared key are DERIVED from CORE's config
+     * (same host, known core_root), so no sidecar needs its own firehose secret. Opt out
+     * with [firehose] report = false. Registers the fatal hook; controller throws are
+     * captured by registerRoutes(). The instance tag derives from the sidecar's baseurl
+     * host (e.g. "workbench.tiknix").
+     */
+    private function installFirehose(): void {
+        if (isset($this->config['firehose']['report'])
+            && !filter_var($this->config['firehose']['report'], FILTER_VALIDATE_BOOLEAN)) return;
+        $coreUrl   = rtrim((string) ($this->config['sidecar']['core_url'] ?? ''), '/');
+        $coreCfg   = @parse_ini_file($this->coreRoot . '/conf/config.ini', true) ?: [];
+        $ingestKey = (string) ($coreCfg['firehose']['ingest_key'] ?? '');
+        if ($coreUrl === '' || $ingestKey === '') return;   // core not provisioned for firehose
+        Flight::set('firehose.ingest_url', $coreUrl . '/firehose/report');
+        Flight::set('firehose.api_key', $ingestKey);
+        Flight::set('firehose.role', 'live');
+        Flight::set('firehose.report', true);
+        ErrorReporter::register();
     }
 
     /**
@@ -190,10 +232,15 @@ class Kernel {
                 if (method_exists($inst, 'setRouteParams')) $inst->setRouteParams($params);
                 // Public method wins; else a controller may opt into catching unknown
                 // sub-segments with _fallback (public storefront /shop/<slug>, etc.).
-                if (method_exists($inst, $method) && (new \ReflectionMethod($inst, $method))->isPublic()) {
-                    $inst->$method($params); return;
+                try {
+                    if (method_exists($inst, $method) && (new \ReflectionMethod($inst, $method))->isPublic()) {
+                        $inst->$method($params); return;
+                    }
+                    if (method_exists($inst, '_fallback')) { $inst->_fallback($raw, $params); return; }
+                } catch (\Throwable $e) {
+                    ErrorReporter::capture($e, 'controller', ['class' => $c, 'method' => $method]);
+                    throw $e;   // capture() logged + reported; let Flight render its error page
                 }
-                if (method_exists($inst, '_fallback')) { $inst->_fallback($raw, $params); return; }
                 Flight::notFound();
             });
     }
