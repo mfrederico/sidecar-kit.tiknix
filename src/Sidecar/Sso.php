@@ -57,6 +57,14 @@ class Sso extends Control {
             'level'      => (int) $member['level'],
             'email'      => (string) $member['email'],
             'checked_at' => time(),
+            // PROJECT AFFINITY. Core sends the project the member is working on, so a
+            // plugin never has to ask again. Every sidecar is a separate app with its
+            // own session, which is why each one grew its own project picker — and why
+            // moving between them could silently change what you were editing. Core has
+            // already verified access before minting the claim, so this is trusted to
+            // the same degree as member_id, which arrives the same way.
+            'instance'   => (int) ($claims['instance'] ?? 0),
+            'slug'       => (string) ($claims['slug'] ?? ''),
         ];
         Flight::redirect($landing);
     }
@@ -71,6 +79,30 @@ class Sso extends Control {
     /** The current plugin session, or null. Static helper for plugin controllers. */
     public static function session(): ?array {
         return $_SESSION[Kernel::name()] ?? null;
+    }
+
+    /**
+     * The project this member is working on, as chosen in core.
+     *
+     * A plugin should use THIS and never offer its own project picker: a second place to
+     * choose is what makes the surface feel like it is arguing with itself, and it lets
+     * a stale selection in one app quietly redirect edits meant for another.
+     *
+     * Returns null when core sent no project, which a plugin should treat as "send them
+     * back to core to choose" rather than as a prompt to ask locally.
+     *
+     * @return array{id:int, slug:string}|null
+     */
+    public static function project(): ?array {
+        $s  = self::session();
+        $id = (int) ($s['instance'] ?? 0);
+        return $id > 0 ? ['id' => $id, 'slug' => (string) ($s['slug'] ?? '')] : null;
+    }
+
+    /** Where to send a member who has no project selected: core's picker. */
+    public static function projectPickerUrl(): string {
+        $core = rtrim((string) (Flight::get('sidecar.core_url') ?? ''), '/');
+        return ($core !== '' ? $core : '') . '/projects';
     }
 
     protected function deny(string $msg): void {
