@@ -27,6 +27,20 @@ they all share so a new sidecar is *its own controllers + views* and nothing els
    iframe.
 3. **Embed** — render inside core's shell iframe at `/sidecar/app/<name>`; no
    `X-Frame-Options`; may `postMessage({tiknixHeight:N})` to size the frame.
+
+   **A link to core is a link OUT of the embed.** Build it from `sidecar.core_url` (never
+   a leading slash — that resolves against *this* host and 404s) and give it
+   `target="_top"`:
+
+   ```php
+   <a href="<?= htmlspecialchars((string) Flight::get('sidecar.core_url')) ?>/teams"
+      target="_top">Teams</a>
+   ```
+
+   Without `_top` the link loads core's entire shell *inside* the frame — nav within nav,
+   with the real topbar still above it. It looks like it worked, which is why it survived
+   in three separate sidecars. Same-sidecar links take no target; a deliberate new tab
+   keeps `target="_blank"`.
 4. **Reach instances only over the documented server-to-server paths** — an instance's
    `[pipeline] trigger_secret` for its own `/pipeline/*`, or its `brk_` broker key for the
    MCP broker. Never hold a connector token; never touch a connector credential.
