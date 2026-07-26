@@ -30,8 +30,41 @@ they all share so a new sidecar is *its own controllers + views* and nothing els
 4. **Reach instances only over the documented server-to-server paths** — an instance's
    `[pipeline] trigger_secret` for its own `/pipeline/*`, or its `brk_` broker key for the
    MCP broker. Never hold a connector token; never touch a connector credential.
+5. **Take the project from the SSO claim. Never offer your own picker.**
+   Core owns which project a member is working on; the claim carries `instance` + `slug`,
+   already access-checked. Use them:
+
+   ```php
+   $project = \app\Sidecar\Sso::project();          // ['id' => int, 'slug' => string] | null
+   if (!$project) {
+       Flight::redirect(\app\Sidecar\Sso::projectPickerUrl());   // core's /projects
+       return;
+   }
+   ```
+
+   **Do not fall back to "the first accessible instance."** That single line is what made
+   the surface flip: a sidecar guessing on your behalf meant arriving from another tool
+   could silently edit, or show tasks for, a project you had not chosen — with nothing in
+   the UI to reveal the swap. If the claimed project is not accessible here, send the
+   member back to core to choose; do not substitute another.
+
+   Deep links may still address a specific instance explicitly (`?inst=<slug>`,
+   `?instance_id=<id>`); resolve those first, then fall through to the claim.
 
 Satisfy that and a sidecar can be written in **any language** (see §"Non-PHP" below).
+
+### Naming
+
+One concept, one name, so the next sidecar does not reinvent it:
+
+| Term | Means |
+|---|---|
+| **project** | what the member chose in core — the SSO claim, `Sso::project()` |
+| **instance** | the underlying registry row / clone that a project resolves to |
+| `slug` | the instance's immutable `{base}-{hash}` identity |
+
+A sidecar's own selection helper should be named for the claim it consults
+(`projectInstance()`), not for a default it invents.
 
 ## Minimal PHP sidecar
 
