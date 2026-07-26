@@ -94,9 +94,48 @@ class Sso extends Control {
      * @return array{id:int, slug:string}|null
      */
     public static function project(): ?array {
-        $s  = self::session();
+        $s = self::session();
+        if (!$s) return null;
+        $memberId = (int) ($s['member_id'] ?? 0);
+        if ($memberId <= 0) return null;
+
+        // Read CORE, not the session copy. The SSO claim is a snapshot taken at consume
+        // time, so a member who switches project in core and returns to a sidecar that
+        // already has a session would keep seeing the old one — the same staleness this
+        // whole mechanism exists to remove, and worse for being invisible. Core's member
+        // row is the single source of truth; the claim below is only a first-request
+        // seed for the case where core cannot be read.
+        $core = Kernel::coreDb();
+        if ($core) {
+            try {
+                $st = $core->prepare('SELECT active_instance_id FROM member WHERE id = ? LIMIT 1');
+                $st->execute([$memberId]);
+                $id = (int) ($st->fetchColumn() ?: 0);
+                return $id > 0 ? ['id' => $id, 'slug' => ''] : null;
+            } catch (\Throwable $e) {
+                // Column absent on an older core → fall through to the claim.
+            }
+        }
+
         $id = (int) ($s['instance'] ?? 0);
         return $id > 0 ? ['id' => $id, 'slug' => (string) ($s['slug'] ?? '')] : null;
+    }
+
+    /**
+     * THE resolution point: the accessible instance for the member's selected project.
+     *
+     * Every sidecar calls this and nothing else. There is deliberately no "default" and
+     * no fallback — a member is either on a project or they are not, and "not" means
+     * send them to the picker, never quietly pick for them. Each surface having its own
+     * answer is what let them disagree, and a disagreement between surfaces is invisible
+     * until it has already written to the wrong instance.
+     *
+     * @return array{id:int,slug:string,app:string,name:string,owned:bool}|null
+     */
+    public static function projectInstance(Access $access, int $memberId): ?array {
+        $project = self::project();
+        if (!$project) return null;
+        return $access->instance($memberId, $project['id']);
     }
 
     /** Where to send a member who has no project selected: core's picker. */

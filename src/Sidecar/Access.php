@@ -48,7 +48,23 @@ class Access {
         return $instanceId > 0 && in_array($instanceId, $this->accessibleInstanceIds($memberId), true);
     }
 
-    /** Accessible instances as [{id, slug, app, name, owned}] for a picker. */
+    /**
+     * Accessible instances, KEYED BY ID: [id => {id, slug, app, name, owned}].
+     *
+     * Keyed deliberately. This used to return a plain ordered list, and every surface
+     * eventually reached for `[0]` as a default — the editor, the store admin, the task
+     * board, the explorer, /connections, /integrations. Each one silently addressed
+     * whichever instance happened to sort first, so acting from those pages could edit
+     * the wrong project, connect a store to it, or fire its pipelines, with nothing in
+     * the UI to reveal the swap. With an id-keyed map there is no `[0]` to reach for:
+     * you either name an instance or you ask for the selected project.
+     *
+     * NOTE for callers: because the keys are ids, `array_values()` before passing these
+     * anywhere that binds positionally (IN (?,?) placeholders), or the integer keys are
+     * taken as parameter positions.
+     *
+     * @return array<int,array{id:int,slug:string,app:string,name:string,owned:bool}>
+     */
     public function instances(int $memberId): array {
         $ids = $this->accessibleInstanceIds($memberId);
         if (!$ids) return [];
@@ -57,12 +73,18 @@ class Access {
         $st->execute(array_values($ids));
         $out = [];
         foreach ($st->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-            $out[] = [
-                'id' => (int) $r['id'], 'slug' => (string) $r['slug'], 'app' => (string) ($r['app'] ?? ''),
+            $id = (int) $r['id'];
+            $out[$id] = [
+                'id' => $id, 'slug' => (string) $r['slug'], 'app' => (string) ($r['app'] ?? ''),
                 'name' => (string) ($r['display_name'] ?? $r['slug']), 'owned' => (int) $r['member_id'] === $memberId,
             ];
         }
         return $out;
+    }
+
+    /** One accessible instance by id, or null. */
+    public function instance(int $memberId, int $instanceId): ?array {
+        return $this->instances($memberId)[$instanceId] ?? null;
     }
 
     /**
