@@ -68,6 +68,11 @@ class Registry {
             'level'     => (int) $member['level'],
             'email'     => (string) ($member['email'] ?? ''),
             'feature'   => $p['feature'],
+            // The project the member is working on. Core has already verified access;
+            // without this a plugin cannot know what to open and has to ask again, which
+            // is how every sidecar ended up with its own project picker.
+            'instance'  => (int) ($member['instance'] ?? 0),
+            'slug'      => (string) ($member['slug'] ?? ''),
         ], $p['sso_secret'], $name);
         return $p['url'] . '/sso/consume?token=' . urlencode($token);
     }
