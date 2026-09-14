@@ -147,13 +147,19 @@ class Kernel {
             $cookieDomain = (string) ($this->config['app']['cookie_domain'] ?? '');
             $host = strtolower(preg_replace('/:\d+$/', '', (string) ($_SERVER['HTTP_HOST'] ?? '')));
             $bare = ltrim($cookieDomain, '.');
+
+            /* Secure / HttpOnly / SameSite are set on EVERY sidecar session, not only when a
+               cookie_domain is configured. This block used to live inside the domain branch,
+               so sidecars without a cross-subdomain domain (workbench, explorer, publisher,
+               pipelines) fell through to session_start() with PHP defaults — no Secure, no
+               SameSite, readable to JS. The DOMAIN is the only conditional part (a shared
+               parent for SSO across subdomains); the hardening is unconditional. */
+            $secure = !str_starts_with((string) ($this->config['app']['baseurl'] ?? ''), 'http://');
+            $params = ['path' => '/', 'secure' => $secure, 'httponly' => true, 'samesite' => 'Lax'];
             if ($cookieDomain !== '' && $host !== '' && ($host === $bare || str_ends_with($host, '.' . $bare))) {
-                $secure = !str_starts_with((string) ($this->config['app']['baseurl'] ?? ''), 'http://');
-                session_set_cookie_params([
-                    'domain' => $cookieDomain, 'path' => '/', 'secure' => $secure,
-                    'httponly' => true, 'samesite' => 'Lax',
-                ]);
+                $params['domain'] = $cookieDomain;
             }
+            session_set_cookie_params($params);
             session_start();
         }
     }
