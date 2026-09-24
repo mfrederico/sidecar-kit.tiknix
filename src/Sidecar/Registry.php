@@ -73,6 +73,10 @@ class Registry {
             // is how every sidecar ended up with its own project picker.
             'instance'  => (int) ($member['instance'] ?? 0),
             'slug'      => (string) ($member['slug'] ?? ''),
+            // Where to land instead of [sidecar] landing — a path on the plugin, e.g. one
+            // task (/workbench/view?id=12). Signed with the rest, so only core picks it;
+            // Sso::consume still refuses anything that is not a path on its own host.
+            'to'        => (string) ($member['to'] ?? ''),
         ], $p['sso_secret'], $name);
         return $p['url'] . '/sso/consume?token=' . urlencode($token);
     }

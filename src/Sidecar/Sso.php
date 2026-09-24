@@ -66,6 +66,10 @@ class Sso extends Control {
             'instance'   => (int) ($claims['instance'] ?? 0),
             'slug'       => (string) ($claims['slug'] ?? ''),
         ];
+        // A deep link core asked for (Registry::launchUrl 'to'): a path on THIS host only —
+        // "/…" but never "//…" (another host) or anything with a scheme or whitespace.
+        $to = (string) ($claims['to'] ?? '');
+        if ($to !== '' && preg_match('#^/(?![/\\\\])[^\s]*$#D', $to)) $landing = $to;
         Flight::redirect($landing);
     }
 
