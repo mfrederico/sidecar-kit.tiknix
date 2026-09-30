@@ -55,6 +55,7 @@ class Kernel {
         // it loads (SYSTEM_ADMIN_ID, PUBLIC_USER_ID) go there, through core's CoreDb. The
         // sidecar's own database is connected first, so CoreDb has one to return to.
         $this->connectDb();
+        Flight::set('sidecar.core_root', $this->coreRoot);   // CoreDb finds core's database through it
         if (class_exists('\\app\\CoreDb')) Flight::set('registry.with', fn(callable $f) => \app\CoreDb::with($f));
         require_once $flightMap;
         if (is_file($this->coreRoot . '/lib/functions.php')) require_once $this->coreRoot . '/lib/functions.php';   // is_control_plane(), h(), …
