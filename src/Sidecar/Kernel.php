@@ -43,8 +43,16 @@ class Kernel {
         // core classes (BaseControls\Control, Bean, …) fall through.
         require $this->coreRoot . '/vendor/autoload.php';
         $this->registerAutoloader();
-        require_once $this->coreRoot . '/lib/FlightMap.php';   // LEVELS, CLASS_NAMESPACE, Flight maps
-        require_once $this->coreRoot . '/lib/functions.php';   // is_control_plane(), h(), …
+        // LEVELS, CLASS_NAMESPACE, Flight maps. A core built on the tiknix runtime package keeps
+        // them in the package (its functions.php is Composer's "files" autoload, already loaded
+        // by the require above); a core with them in its own lib/ loads them from there.
+        $flightMap = null;
+        foreach ([$this->coreRoot . '/lib/FlightMap.php', $this->coreRoot . '/vendor/tiknix/runtime/lib/FlightMap.php'] as $f) {
+            if (is_file($f)) { $flightMap = $f; break; }
+        }
+        if ($flightMap === null) throw new \RuntimeException("sidecar: no FlightMap.php in {$this->coreRoot}/lib or its tiknix runtime package — is [sidecar] core_root right?");
+        require_once $flightMap;
+        if (is_file($this->coreRoot . '/lib/functions.php')) require_once $this->coreRoot . '/lib/functions.php';   // is_control_plane(), h(), …
 
         $this->flattenConfig();
         $this->connectDb();
