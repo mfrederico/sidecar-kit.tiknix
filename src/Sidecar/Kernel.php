@@ -51,11 +51,15 @@ class Kernel {
             if (is_file($f)) { $flightMap = $f; break; }
         }
         if ($flightMap === null) throw new \RuntimeException("sidecar: no FlightMap.php in {$this->coreRoot}/lib or its tiknix runtime package — is [sidecar] core_root right?");
+        // Members live in core's database, not the sidecar's: the lookups FlightMap makes while
+        // it loads (SYSTEM_ADMIN_ID, PUBLIC_USER_ID) go there, through core's CoreDb. The
+        // sidecar's own database is connected first, so CoreDb has one to return to.
+        $this->connectDb();
+        if (class_exists('\\app\\CoreDb')) Flight::set('registry.with', fn(callable $f) => \app\CoreDb::with($f));
         require_once $flightMap;
         if (is_file($this->coreRoot . '/lib/functions.php')) require_once $this->coreRoot . '/lib/functions.php';   // is_control_plane(), h(), …
 
         $this->flattenConfig();
-        $this->connectDb();
         $this->startSession();
 
         Flight::set('flight.views.path', $this->root . '/views');
