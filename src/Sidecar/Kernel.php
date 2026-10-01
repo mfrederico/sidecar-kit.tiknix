@@ -235,10 +235,34 @@ class Kernel {
      * Allowlisted catch-all in core's defaultRoute shape (proven to match), dispatching
      * ONLY to the plugin's own controllers via $routeMap. Defense-in-depth with guard().
      */
+    /**
+     * A signed-in member who opens a page of an EMBEDDED sidecar ([sidecar] embedded = true)
+     * directly — a bookmark, a typed URL, a link opened in a new tab — goes back through core:
+     * core's /sidecar/app/<name> puts the page in the shell (the left nav) and its launch tells
+     * the sidecar which project THIS browser has selected in core. Opened directly, the sidecar
+     * kept the project of whatever launch came last, and disagreed with core's nav and /projects.
+     *
+     * Only a top-level page load (Sec-Fetch-Dest: document — the same page inside core's frame
+     * says "iframe"), only GET, never the SSO hand-off itself, never a visitor without a session
+     * (public pages stay public). A browser that sends no Sec-Fetch-Dest is let through.
+     */
+    private static function enterThroughCore(string $class): bool {
+        if (!Flight::get('sidecar.embedded')) return false;
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') return false;
+        if (strtolower($_SERVER['HTTP_SEC_FETCH_DEST'] ?? '') !== 'document') return false;
+        if (strtolower($class) === 'sso' || Sso::session() === null) return false;
+        $core = rtrim((string) (Flight::get('sidecar.core_url') ?? ''), '/');
+        if ($core === '') return false;
+        $to = (string) ($_SERVER['REQUEST_URI'] ?? '/');
+        Flight::redirect($core . '/sidecar/app/' . rawurlencode(self::name()) . '?to=' . rawurlencode($to));
+        return true;
+    }
+
     private function registerRoutes(): void {
         $map = $this->routeMap;
         Flight::route('/(@class(/@method(/@op(/@opid(/.*?)))))',
             function ($class = null, $method = null, $op = null, $opid = null, $route = null) use ($map) {
+                if (self::enterThroughCore((string) $class)) return;
                 $class  = strtolower($class ?: 'index');
                 $raw    = (string) ($method ?: 'index');
                 $method = preg_replace('/[^a-z0-9]/i', '', $raw) ?: 'index';
