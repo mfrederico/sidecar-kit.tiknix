@@ -103,12 +103,16 @@ class Sso extends Control {
         $memberId = (int) ($s['member_id'] ?? 0);
         if ($memberId <= 0) return null;
 
-        // Read CORE, not the session copy. The SSO claim is a snapshot taken at consume
-        // time, so a member who switches project in core and returns to a sidecar that
-        // already has a session would keep seeing the old one — the same staleness this
-        // whole mechanism exists to remove, and worse for being invisible. Core's member
-        // row is the single source of truth; the claim below is only a first-request
-        // seed for the case where core cannot be read.
+        // The project THIS browser launched with. Core's choice is per browser session
+        // (ProjectContext::current: session first, the member row only a remembered default for
+        // a new session), and every way into a sidecar from core — the nav, /sidecar/app,
+        // /sidecar/launch — mints a fresh claim with that session's project. Reading the member
+        // row instead showed another browser's last pick: catpoobox chosen here, the builder on
+        // PartsDNA because a different session of the same member had chosen it last.
+        // The row is read only when this session carries no project at all.
+        $id = (int) ($s['instance'] ?? 0);
+        if ($id > 0) return ['id' => $id, 'slug' => (string) ($s['slug'] ?? '')];
+
         $core = Kernel::coreDb();
         if ($core) {
             try {
@@ -117,12 +121,11 @@ class Sso extends Control {
                 $id = (int) ($st->fetchColumn() ?: 0);
                 return $id > 0 ? ['id' => $id, 'slug' => ''] : null;
             } catch (\Throwable $e) {
-                // Column absent on an older core → fall through to the claim.
+                error_log('ERROR Sso::project: could not read member.active_instance_id from core: ' . $e->getMessage());
+                return null;
             }
         }
-
-        $id = (int) ($s['instance'] ?? 0);
-        return $id > 0 ? ['id' => $id, 'slug' => (string) ($s['slug'] ?? '')] : null;
+        return null;
     }
 
     /**
